@@ -154,15 +154,6 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
                     actions.dismiss()
                 }
                 
-                // Add a visible border around the spotlighted element so the target
-                // remains clearly identifiable against the dimmed background.
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.95), lineWidth: 3)
-                    .frame(width: overlayFocusFrame.width, height: overlayFocusFrame.height)
-                    .position(x: overlayFocusFrame.midX, y: overlayFocusFrame.midY)
-                    .shadow(color: .white.opacity(0.25), radius: 16)
-                    .allowsHitTesting(false)
-                
                 // Render the caller-provided overlay card and measure it in the same
                 // pass so we can place it above or below the spotlight accurately.
                 overlay(selected, actions)
