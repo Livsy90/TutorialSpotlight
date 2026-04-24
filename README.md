@@ -20,7 +20,7 @@ The package is implemented as a pair of view modifiers:
 Add the package to your project with Swift Package Manager.
 
 ```
-https://github.com/Livsy90/IntelligenceGlow.git
+https://github.com/Livsy90/TutorialSpotlight
 ```
 
 ## Public API
