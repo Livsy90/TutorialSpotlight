@@ -2,8 +2,7 @@
 
 `TutorialSpotlight` is a lightweight SwiftUI package for building onboarding flows with a spotlight effect. It dims the screen, cuts out the currently focused element, draws a visible highlight around it, and lets you attach custom instructional content that can dismiss or advance the tutorial.
 
-<img src="https://github.com/Livsy90/TutorialSpotlight/blob/main/TutorialSpotlightDemo2.jpg" height="450">
-<img src="https://github.com/Livsy90/TutorialSpotlight/blob/main/TutorialSpotlightDemo1.jpg" height="450">
+https://github.com/user-attachments/assets/16b41c65-0c3c-4fa7-bc85-20a6a9529379
 
 The package is implemented as a pair of view modifiers:
 
