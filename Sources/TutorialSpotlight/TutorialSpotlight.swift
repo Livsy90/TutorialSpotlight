@@ -59,7 +59,11 @@ public extension View {
     func tutorialSpotlightSource<ID: Hashable>(id: ID) -> some View {
         modifier(TutorialSpotlightSourceModifier(id: id, spotlightShape: nil))
     }
-
+    
+    func tutorialSpotlightSourceContainer<ID: Hashable>(id: ID) -> some View {
+        modifier(TutorialSpotlightSourceContainerModifier(id: id, spotlightShape: nil))
+    }
+    
     /// Marks a view as a spotlight target and overrides the spotlight shape for that target.
     func tutorialSpotlightSource<ID: Hashable>(
         id: ID,
@@ -201,6 +205,23 @@ private struct TutorialSpotlightSourceModifier<ID: Hashable>: ViewModifier {
                 )
             ]
         }
+    }
+}
+
+private struct TutorialSpotlightSourceContainerModifier<ID: Hashable>: ViewModifier {
+    let id: ID
+    let spotlightShape: TutorialSpotlightShape?
+    
+    func body(content: Content) -> some View {
+        content
+            .transformAnchorPreference(
+                key: TutorialSpotlightPreferenceKey<ID>.self,
+                value: .bounds,
+                transform: {$0[id] = .init(
+                    anchor: $1,
+                    spotlightShape: spotlightShape
+                )}
+            )
     }
 }
 
@@ -500,12 +521,14 @@ private extension GeometryProxy {
         enum Step: String, CaseIterable {
             case profile
             case filters
+            case price
             case checkout
             
             var title: String {
                 switch self {
                 case .profile: "Profile"
                 case .filters: "Filters"
+                case .price: "Price"
                 case .checkout: "Checkout"
                 }
             }
@@ -514,6 +537,7 @@ private extension GeometryProxy {
                 switch self {
                 case .profile: "Here the user quickly gets to their profile and account settings."
                 case .filters: "This block manages filters. It's usually the second step in onboarding."
+                case .price: "Testing parent-child relationships."
                 case .checkout: "The button completes the scenario. The final step may lead to payment or confirmation."
                 }
             }
@@ -577,7 +601,7 @@ private extension GeometryProxy {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         filterPanel
-                            .tutorialSpotlightSource(id: Step.filters)
+                            .tutorialSpotlightSourceContainer(id: Step.filters)
                         
                         Button("Show Sheet") {
                             showSheet.toggle()
@@ -651,6 +675,7 @@ private extension GeometryProxy {
                 
                 HStack(spacing: 14) {
                     filterMetric(title: "Price", value: "$420")
+                        .tutorialSpotlightSource(id: Step.price)
                     filterMetric(title: "Rating", value: "4.8")
                     filterMetric(title: "Transit", value: "18 min")
                 }
