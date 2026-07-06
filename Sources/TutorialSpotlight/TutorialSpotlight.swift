@@ -60,10 +60,6 @@ public extension View {
         modifier(TutorialSpotlightSourceModifier(id: id, spotlightShape: nil))
     }
     
-    func tutorialSpotlightSourceContainer<ID: Hashable>(id: ID) -> some View {
-        modifier(TutorialSpotlightSourceContainerModifier(id: id, spotlightShape: nil))
-    }
-    
     /// Marks a view as a spotlight target and overrides the spotlight shape for that target.
     func tutorialSpotlightSource<ID: Hashable>(
         id: ID,
@@ -194,34 +190,15 @@ private struct TutorialSpotlightSourceModifier<ID: Hashable>: ViewModifier {
     func body(content: Content) -> some View {
         // Store the view bounds as an anchor so the container modifier can later
         // resolve the highlighted frame inside its own geometry context.
-        content.anchorPreference(
+        content.transformAnchorPreference(
             key: TutorialSpotlightPreferenceKey<ID>.self,
             value: .bounds
-        ) { anchor in
-            [
-                id: .init(
-                    anchor: anchor,
-                    spotlightShape: spotlightShape
-                )
-            ]
-        }
-    }
-}
-
-private struct TutorialSpotlightSourceContainerModifier<ID: Hashable>: ViewModifier {
-    let id: ID
-    let spotlightShape: TutorialSpotlightShape?
-    
-    func body(content: Content) -> some View {
-        content
-            .transformAnchorPreference(
-                key: TutorialSpotlightPreferenceKey<ID>.self,
-                value: .bounds,
-                transform: {$0[id] = .init(
-                    anchor: $1,
-                    spotlightShape: spotlightShape
-                )}
+        ) { value, anchor in
+            value[id] = .init(
+                anchor: anchor,
+                spotlightShape: spotlightShape
             )
+        }
     }
 }
 
@@ -601,7 +578,7 @@ private extension GeometryProxy {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         filterPanel
-                            .tutorialSpotlightSourceContainer(id: Step.filters)
+                            .tutorialSpotlightSource(id: Step.filters)
                         
                         Button("Show Sheet") {
                             showSheet.toggle()
