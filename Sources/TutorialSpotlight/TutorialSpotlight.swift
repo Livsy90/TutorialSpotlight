@@ -12,6 +12,8 @@ public extension View {
         animationDuration: TimeInterval = 0.25,
         dimmingOpacity: CGFloat = 0.58,
         spotlightEdgeBlurRadius: CGFloat = 0,
+        presentation: TutorialSpotlightPresentation = .inline,
+        overlayContentInsets: EdgeInsets = .init(),
         @ViewBuilder overlay: @escaping (_ id: ID, _ actions: TutorialSpotlightActions) -> Overlay
     ) -> some View {
         tutorialSpotlight(
@@ -22,6 +24,8 @@ public extension View {
             animationDuration: animationDuration,
             dimmingOpacity: dimmingOpacity,
             spotlightEdgeBlurRadius: spotlightEdgeBlurRadius,
+            presentation: presentation,
+            overlayContentInsets: overlayContentInsets,
             overlay: overlay
         )
     }
@@ -37,18 +41,22 @@ public extension View {
         animationDuration: TimeInterval = 0.25,
         dimmingOpacity: CGFloat = 0.58,
         spotlightEdgeBlurRadius: CGFloat = 0,
+        presentation: TutorialSpotlightPresentation = .inline,
+        overlayContentInsets: EdgeInsets = .init(),
         @ViewBuilder overlay: @escaping (_ id: ID, _ actions: TutorialSpotlightActions) -> Overlay
     ) -> some View {
         modifier(
             TutorialSpotlightContainerModifier(
                 selection: selection,
+                presentation: presentation,
                 configuration: .init(
                     orderedIDs: orderedIDs,
                     spotlightPadding: spotlightPadding,
                     spotlightShape: spotlightShape,
                     animationDuration: animationDuration,
                     dimmingOpacity: dimmingOpacity,
-                    spotlightEdgeBlurRadius: spotlightEdgeBlurRadius
+                    spotlightEdgeBlurRadius: spotlightEdgeBlurRadius,
+                    overlayContentInsets: overlayContentInsets
                 ),
                 overlay: overlay
             )
@@ -72,6 +80,13 @@ public extension View {
             )
         )
     }
+}
+
+/// Controls whether the tutorial is confined to its SwiftUI container or covers
+/// the source scene, including navigation bars, tab bars, and presented content.
+public enum TutorialSpotlightPresentation {
+    case inline
+    case window
 }
 
 public struct TutorialSpotlightShape: Shape {
@@ -122,8 +137,8 @@ public struct TutorialSpotlightActions {
     public let advance: () -> Void
 }
 
-private struct TutorialSpotlightConfiguration<ID: Hashable> {
-    typealias Preferences = TutorialSpotlightPreferenceKey<ID>.Value
+struct TutorialSpotlightConfiguration<ID: Hashable> {
+    typealias Targets = [ID: TutorialSpotlightResolvedTarget]
 
     let orderedIDs: [ID]
     let spotlightPadding: CGFloat
@@ -131,22 +146,19 @@ private struct TutorialSpotlightConfiguration<ID: Hashable> {
     let animationDuration: TimeInterval
     let dimmingOpacity: CGFloat
     let spotlightEdgeBlurRadius: CGFloat
+    let overlayContentInsets: EdgeInsets
 
-    let horizontalPadding: CGFloat = 16
-    let verticalSpacing: CGFloat = 24
-    let verticalPadding: CGFloat = 24
-
-    func previousSelection(from selected: ID, preferences: Preferences) -> ID? {
-        adjacentSelection(from: selected, preferences: preferences, direction: .backward)
+    func previousSelection(from selected: ID, targets: Targets) -> ID? {
+        adjacentSelection(from: selected, targets: targets, direction: .backward)
     }
 
-    func nextSelection(from selected: ID, preferences: Preferences) -> ID? {
-        adjacentSelection(from: selected, preferences: preferences, direction: .forward)
+    func nextSelection(from selected: ID, targets: Targets) -> ID? {
+        adjacentSelection(from: selected, targets: targets, direction: .forward)
     }
 
     private func adjacentSelection(
         from selected: ID,
-        preferences: Preferences,
+        targets: Targets,
         direction: TutorialSpotlightDirection
     ) -> ID? {
         guard !orderedIDs.isEmpty, let startIndex = orderedIDs.firstIndex(of: selected) else {
@@ -159,7 +171,7 @@ private struct TutorialSpotlightConfiguration<ID: Hashable> {
             index = nextIndex
             let candidate = orderedIDs[index]
 
-            if preferences[candidate] != nil {
+            if targets[candidate] != nil {
                 return candidate
             }
         }
@@ -204,8 +216,64 @@ private struct TutorialSpotlightSourceModifier<ID: Hashable>: ViewModifier {
 
 private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: ViewModifier {
     @Binding var selection: ID?
-
+    @Environment(\.self) private var environment
+    let presentation: TutorialSpotlightPresentation
     let configuration: TutorialSpotlightConfiguration<ID>
+    let overlay: (ID, TutorialSpotlightActions) -> Overlay
+
+    func body(content: Content) -> some View {
+        content.overlayPreferenceValue(TutorialSpotlightPreferenceKey<ID>.self) { preferences in
+            GeometryReader { proxy in
+                let targets = preferences.mapValues {
+                    TutorialSpotlightResolvedTarget(frame: proxy[$0.anchor], spotlightShape: $0.spotlightShape)
+                }
+                switch presentation {
+                case .inline:
+                    let insets = proxy.safeAreaInsets
+                    TutorialSpotlightOverlayView(
+                        selection: $selection,
+                        targets: targets.mapValues {
+                            TutorialSpotlightResolvedTarget(
+                                frame: $0.frame.offsetBy(dx: insets.leading, dy: insets.top),
+                                spotlightShape: $0.spotlightShape
+                            )
+                        },
+                        configuration: configuration,
+                        containerBounds: proxy.tutorialSpotlightContainerBounds,
+                        safeBounds: CGRect(
+                            x: insets.leading, y: insets.top,
+                            width: proxy.size.width, height: proxy.size.height
+                        ),
+                        overlay: overlay
+                    )
+                    .offset(x: -insets.leading, y: -insets.top)
+                case .window:
+                    TutorialSpotlightWindowPresenter(
+                        selection: $selection,
+                        targets: targets,
+                        configuration: configuration,
+                        environment: environment,
+                        overlay: overlay
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+}
+
+struct TutorialSpotlightResolvedTarget {
+    let frame: CGRect
+    let spotlightShape: TutorialSpotlightShape?
+}
+
+struct TutorialSpotlightOverlayView<ID: Hashable, Overlay: View>: View {
+    @Binding var selection: ID?
+    @Environment(\.layoutDirection) private var layoutDirection
+    let targets: [ID: TutorialSpotlightResolvedTarget]
+    let configuration: TutorialSpotlightConfiguration<ID>
+    let containerBounds: CGRect
+    let safeBounds: CGRect
     let overlay: (ID, TutorialSpotlightActions) -> Overlay
 
     // This is the animated spotlight frame currently shown on screen.
@@ -220,35 +288,10 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
     // while the scroll view or target frame is still updating.
     @State private var overlayOpacity: CGFloat = 0
 
-    func body(content: Content) -> some View {
-        ZStack {
-            content
-            // The content marks spotlight targets inside a named coordinate space.
-            // That gives us a stable local frame for every registered anchor.
-                .coordinateSpace(name: TutorialSpotlightCoordinateSpace.name)
-        }
-        // Read all registered spotlight source anchors and build the fullscreen overlay
-        // on top of the original content.
-        .overlayPreferenceValue(TutorialSpotlightPreferenceKey<ID>.self) { preferences in
-            GeometryReader { proxy in
-                ZStack {
-                    Color.clear
-                    
-                    overlayContent(preferences: preferences, proxy: proxy)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-    }
-    
     @ViewBuilder
-    private func overlayContent(
-        preferences: TutorialSpotlightPreferenceKey<ID>.Value,
-        proxy: GeometryProxy
-    ) -> some View {
-        if let selected = selection, let target = preferences[selected] {
-            // Resolve the selected anchor inside the container coordinate space.
-            let targetFrame = proxy[target.anchor]
+    var body: some View {
+        if let selected = selection, let target = targets[selected] {
+            let targetFrame = target.frame
             let focusFrame = targetFrame.insetBy(
                 dx: -configuration.spotlightPadding,
                 dy: -configuration.spotlightPadding
@@ -267,24 +310,33 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
                     }
                 },
                 previous: {
+                    guard let selected = selection else { return }
                     updateSelection(
-                        configuration.previousSelection(from: selected, preferences: preferences)
+                        configuration.previousSelection(from: selected, targets: targets)
                     )
                 },
                 advance: {
+                    guard let selected = selection else { return }
                     updateSelection(
-                        configuration.nextSelection(from: selected, preferences: preferences)
+                        configuration.nextSelection(from: selected, targets: targets)
                     )
                 }
             )
 
-            let safeAreaInsets = proxy.safeAreaInsets
-            let containerBounds = proxy.tutorialSpotlightContainerBounds
-            let overlayFocusFrame = displayedFocusFrame.offsetBy(
-                dx: safeAreaInsets.leading,
-                dy: safeAreaInsets.top
+            let overlayFocusFrame = displayedFocusFrame
+            let contentBounds = TutorialSpotlightLayout.contentBounds(
+                safeBounds: safeBounds,
+                insets: configuration.overlayContentInsets,
+                layoutDirection: layoutDirection
             )
             
+            let cardSize = CGSize(
+                width: min(320, max(0, contentBounds.width - TutorialSpotlightLayout.horizontalPadding * 2)),
+                height: min(
+                    overlaySize.height > 0 ? overlaySize.height : 180,
+                    max(0, contentBounds.height - TutorialSpotlightLayout.verticalPadding * 2)
+                )
+            )
             ZStack(alignment: .topLeading) {
                 // Draw a fullscreen dimming layer and punch out the spotlight region.
                 // An optional blur softens the cutout edge for a flashlight effect.
@@ -296,31 +348,30 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
                 
                 // Render the caller-provided overlay card and measure it in the same
                 // pass so we can place it above or below the spotlight accurately.
-                overlay(selected, actions)
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
-                    .opacity(overlayOpacity)
-                    .frame(
-                        maxWidth: min(
-                            320,
-                            containerBounds.width - (configuration.horizontalPadding * 2)
-                        )
-                    )
-                    .background {
-                        GeometryReader { overlayProxy in
-                            Color.clear
-                                .preference(
+                ScrollView(.vertical, showsIndicators: false) {
+                    overlay(selected, actions)
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .background {
+                            GeometryReader { overlayProxy in
+                                Color.clear.preference(
                                     key: TutorialSpotlightOverlaySizePreferenceKey.self,
                                     value: overlayProxy.size
                                 )
+                            }
                         }
-                    }
+                }
+                    // Each step starts at the top; moving the same target keeps
+                    // the current card and its scroll position intact.
+                    .id(selected)
+                    .transaction { $0.animation = nil }
+                    .opacity(overlayOpacity)
+                    .frame(width: cardSize.width, height: cardSize.height)
                     .position(
-                        overlayPosition(
-                            for: overlayFocusFrame,
-                            overlaySize: overlaySize,
-                            in: containerBounds
+                        TutorialSpotlightLayout.cardPosition(
+                            focusFrame: overlayFocusFrame,
+                            overlaySize: cardSize,
+                            contentBounds: contentBounds
                         )
                     )
                     .animation(nil, value: currentFrame)
@@ -330,7 +381,6 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
                     }
             }
             .frame(width: containerBounds.width, height: containerBounds.height)
-            .offset(x: -safeAreaInsets.leading, y: -safeAreaInsets.top)
             .onAppear {
                 // Initialize the animated frame when the overlay becomes visible.
                 currentFrame = focusFrame
@@ -356,53 +406,6 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
         }
     }
     
-    private func overlayPosition(
-        for focusFrame: CGRect,
-        overlaySize: CGSize,
-        in container: CGRect
-    ) -> CGPoint {
-        // Keep a consistent margin around the overlay so it never touches screen edges.
-        // Cap the overlay width to a readable maximum while still respecting
-        // the available horizontal space inside the container.
-        let maxOverlayWidth = min(320, container.width - (configuration.horizontalPadding * 2))
-
-        // Use the measured overlay size when available. Fallback values are used
-        // during the first layout pass, before SwiftUI reports the actual size.
-        let measuredWidth = overlaySize.width > 0 ? overlaySize.width : maxOverlayWidth
-        let measuredHeight = overlaySize.height > 0 ? overlaySize.height : 180
-        let overlayWidth = min(measuredWidth, maxOverlayWidth)
-
-        // Try to align the overlay horizontally with the highlighted target,
-        // then clamp the center point so the card stays fully visible on screen.
-        let centeredX = min(
-            max(focusFrame.midX, container.minX + configuration.horizontalPadding + overlayWidth / 2),
-            container.maxX - configuration.horizontalPadding - overlayWidth / 2
-        )
-
-        // The preferred placement is below the spotlight. We compute the Y center
-        // by taking the target's bottom edge, adding vertical spacing, and then
-        // shifting by half of the overlay height because `.position` works from center.
-        let preferredBelowY = focusFrame.maxY + configuration.verticalSpacing + measuredHeight / 2
-
-        // If the entire overlay still fits within the bottom safe area margin,
-        // keep it below the spotlight because that is the primary visual layout.
-        if preferredBelowY + measuredHeight / 2 <= container.maxY - configuration.verticalPadding {
-            return CGPoint(x: centeredX, y: preferredBelowY)
-        }
-
-        // Otherwise, move the overlay above the spotlight using the same center-based
-        // coordinate calculation.
-        let preferredAboveY = focusFrame.minY - configuration.verticalSpacing - measuredHeight / 2
-
-        // Clamp the final vertical position so the overlay remains fully inside
-        // the visible container even when there is not enough room above either.
-        let clampedY = min(
-            max(preferredAboveY, container.minY + configuration.verticalPadding + measuredHeight / 2),
-            container.maxY - configuration.verticalPadding - measuredHeight / 2
-        )
-        return CGPoint(x: centeredX, y: clampedY)
-    }
-
     private func updateSelection(_ newSelection: ID?) {
         withAnimation(.easeInOut(duration: configuration.animationDuration)) {
             selection = newSelection
@@ -421,9 +424,12 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
     private func showOverlayWithDelay() async {
         overlayOpacity = 0
 
-        try? await Task.sleep(nanoseconds: overlayFadeDelayNanoseconds)
-
-        guard selection != nil else { return }
+        do {
+            try await Task.sleep(nanoseconds: overlayFadeDelayNanoseconds)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled, selection != nil else { return }
 
         withAnimation(overlayFadeAnimation) {
             overlayOpacity = 1
@@ -472,11 +478,6 @@ private struct TutorialSpotlightOverlaySizePreferenceKey: PreferenceKey {
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
         value = nextValue()
     }
-}
-
-private enum TutorialSpotlightCoordinateSpace {
-    // Shared coordinate space name used by spotlight sources and the container.
-    static let name = "tutorialSpotlightCoordinateSpace"
 }
 
 private extension GeometryProxy {

@@ -19,6 +19,10 @@ let package = Package(
         .target(
             name: "TutorialSpotlight"
         ),
+        .testTarget(
+            name: "TutorialSpotlightTests",
+            dependencies: ["TutorialSpotlight"]
+        ),
 
     ]
 )

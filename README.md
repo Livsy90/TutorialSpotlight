@@ -35,6 +35,8 @@ public extension View {
         animationDuration: TimeInterval = 0.25,
         dimmingOpacity: CGFloat = 0.58,
         spotlightEdgeBlurRadius: CGFloat = 0,
+        presentation: TutorialSpotlightPresentation = .inline,
+        overlayContentInsets: EdgeInsets = .init(),
         @ViewBuilder overlay: @escaping (_ id: ID, _ actions: TutorialSpotlightActions) -> Overlay
     ) -> some View
 
@@ -46,6 +48,8 @@ public extension View {
         animationDuration: TimeInterval = 0.25,
         dimmingOpacity: CGFloat = 0.58,
         spotlightEdgeBlurRadius: CGFloat = 0,
+        presentation: TutorialSpotlightPresentation = .inline,
+        overlayContentInsets: EdgeInsets = .init(),
         @ViewBuilder overlay: @escaping (_ id: ID, _ actions: TutorialSpotlightActions) -> Overlay
     ) -> some View
 
@@ -67,6 +71,48 @@ public struct TutorialSpotlightActions {
     public let advance: () -> Void
 }
 ```
+
+## Window presentation
+
+The **Window above tab bar** preview in `TutorialSpotlightTabBarPreview.swift`
+shows a TabView with a round add button above the system tab bar. It starts on
+the add-button hint and supports previous/next, dismiss, and replay.
+
+
+Use `presentation: .window` when the tutorial must cover the entire source scene,
+including tab bars and presented sheets. Existing calls keep the `.inline` behavior.
+
+```swift
+.tutorialSpotlight(
+    selection: $selection,
+    orderedIDs: Step.allCases,
+    presentation: .window
+) { step, actions in
+    HintCard(step: step, actions: actions)
+}
+```
+
+The presenter discovers the window of its own container, creates an overlay window
+in that same `UIWindowScene`, and converts target rectangles into the overlay's
+coordinate space. Before showing the window, it ends editing in the source window
+to dismiss that window's keyboard. It never makes the overlay key. The full-window mask blocks
+underlying interaction; tapping it dismisses the tutorial. The card stays inside
+the window's safe area and scrolls if its content exceeds the available height.
+Targets and card placement update as layout changes. Each step starts with its
+card scrolled to the top, including when navigating back.
+
+The hosting root inherits locale, layout direction, color scheme, Dynamic Type,
+legibility weight, and font. Inject custom environment values and environment
+objects explicitly in the overlay closure; internal SwiftUI layout values are
+not copied between windows. The window is released when selection is cleared or its presenter is
+removed. Backgrounding/disconnecting the source scene clears selection and
+releases the window. Other scenes are unaffected.
+
+Both modes accept `overlayContentInsets` to reserve additional space around the
+card, for example `EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 80)`.
+These directional insets affect card placement only, not the mask or target
+coordinates. Window mode draws above a tab bar; it does not automatically reserve
+the frame of an app-specific floating control.
 
 ## How It Works
 
