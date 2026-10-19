@@ -250,6 +250,7 @@ private struct TutorialSpotlightContainerModifier<ID: Hashable, Overlay: View>: 
                 case .window:
                     TutorialSpotlightWindowPresenter(
                         selection: $selection,
+                        selectedID: selection,
                         targets: targets,
                         configuration: configuration,
                         environment: environment,

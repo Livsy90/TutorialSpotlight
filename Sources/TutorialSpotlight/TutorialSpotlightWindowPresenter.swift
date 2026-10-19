@@ -5,6 +5,9 @@ import UIKit
 /// Its actual window identifies the scene, without global/key-window lookups.
 struct TutorialSpotlightWindowPresenter<ID: Hashable, Overlay: View>: UIViewRepresentable {
     @Binding var selection: ID?
+    // Read the value in the SwiftUI container, so changing a plain @State binding
+    // invalidates this presenter. Deferred UIKit callbacks cannot track that read.
+    let selectedID: ID?
     let targets: [ID: TutorialSpotlightResolvedTarget]
     let configuration: TutorialSpotlightConfiguration<ID>
     let environment: EnvironmentValues
@@ -66,7 +69,7 @@ struct TutorialSpotlightWindowPresenter<ID: Hashable, Overlay: View>: UIViewRepr
         }
 
         private func update(from sourceView: UIView) {
-            guard let selected = parent.selection,
+            guard let selected = parent.selectedID,
                   parent.targets[selected] != nil,
                   let sourceWindow = sourceView.window,
                   let scene = sourceWindow.windowScene,
